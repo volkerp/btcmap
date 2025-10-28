@@ -1,0 +1,4 @@
+blockchain-parser==0.1.6
+plyvel==1.5.1
+python-bitcoinlib==0.11.0
+ripemd-hash==1.0.1
