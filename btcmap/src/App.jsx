@@ -31,10 +31,10 @@ const App = () => {
     ];
     const DAYS_IN_WEEK = 7;
     const MAX_WEEKS = 6;
-    const DAY_SIZE = 4;
+    const DAY_SIZE = 5;
     const DAY_GAP = 2;
     const MONTH_GAP_X = 24;
-    const YEAR_GAP_Y = 90;
+    const YEAR_GAP_Y = 40;
     const LEFT_MARGIN = 90;
     const TOP_MARGIN = 70;
     const MIN_TRANSACTIONS = 1;
@@ -43,32 +43,74 @@ const App = () => {
     const formatDateKey = (year, month, day) =>
         `${year}-${String(month + 1).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
 
-    const parseDateParts = (value) => {
-        if (typeof value !== 'string') return null;
-        const match = /^([0-9]{4})-([0-9]{2})-([0-9]{2})/.exec(value);
-        if (!match) return null;
-        return {
-            year: Number(match[1]) || 0,
-            month: Number(match[2]) - 1,
-            day: Number(match[3]) || 0
-        };
-    };
-
     const lerp = (start, end, amount) => start + (end - start) * amount;
 
-    const getDayColor = (rawValue) => {
-        if (!Number.isFinite(rawValue) || rawValue <= 0) {
+    // Logarithmic interpolations
+    const lerpLog2 = (start, end, amount) => {
+        // Interpolate in log2 space
+        const logStart = Math.log2(start);
+        const logEnd = Math.log2(end);
+        const logValue = lerp(logStart, logEnd, amount);
+        return Math.pow(2, logValue);
+    };
+
+    const lerpLog10 = (start, end, amount) => {
+        // Interpolate in log10 space
+        const logStart = Math.log10(start);
+        const logEnd = Math.log10(end);
+        const logValue = lerp(logStart, logEnd, amount);
+        return Math.pow(10, logValue);
+    };
+
+    const lerpLogN = (start, end, amount, base = Math.E) => {
+        // Interpolate in logN space (default is natural log)
+        const logStart = Math.log(start) / Math.log(base);
+        const logEnd = Math.log(end) / Math.log(base);
+        const logValue = lerp(logStart, logEnd, amount);
+        return Math.pow(base, logValue);
+    };
+
+    const getDayColor = (value, minValue, maxValue, type = 'linear') => {
+        if (!Number.isFinite(value) || value <= 0) {
             return '#000000';
         }
-        const clamped = Math.min(Math.max(rawValue, MIN_TRANSACTIONS), MAX_TRANSACTIONS);
-        const range = MAX_TRANSACTIONS - MIN_TRANSACTIONS;
-        const t = range === 0 ? 0 : (clamped - MIN_TRANSACTIONS) / range;
+        const clamped = Math.min(Math.max(value, minValue), maxValue);
+        const range = maxValue - minValue;
+        const t = range === 0 ? 0 : (clamped - minValue) / range;
 
-        const r = Math.round(lerp(16, 239, t));
-        const g = Math.round(lerp(185, 68, t));
-        const b = Math.round(lerp(129, 68, t));
+        switch (type) {
+            case 'log2': {
+                const logValue = lerpLog2(minValue, maxValue, t);
+                const logT = (Math.log2(logValue) - Math.log2(minValue)) / (Math.log2(maxValue) - Math.log2(minValue));
+                const r = Math.round(lerp(16, 239, logT));
+                const g = Math.round(lerp(185, 68, logT));
+                const b = Math.round(lerp(129, 68, logT));
+                return `rgb(${r}, ${g}, ${b})`;
+            }
+            case 'log10': {
+                const logValue = lerpLog10(minValue, maxValue, t);
+                const logT = (Math.log10(logValue) - Math.log10(minValue)) / (Math.log10(maxValue) - Math.log10(minValue));
+                const r = Math.round(lerp(16, 239, logT));
+                const g = Math.round(lerp(185, 68, logT));
+                const b = Math.round(lerp(129, 68, logT));
+                return `rgb(${r}, ${g}, ${b})`;
+            }
+            case 'logN': {
+                const logValue = lerpLogN(minValue, maxValue, t, 10); // using base 10 for example
+                const logT = (Math.log10(logValue) - Math.log10(minValue)) / (Math.log10(maxValue) - Math.log10(minValue));
+                const r = Math.round(lerp(16, 239, logT));
+                const g = Math.round(lerp(185, 68, logT));
+                const b = Math.round(lerp(129, 68, logT));
+                return `rgb(${r}, ${g}, ${b})`;
+            }
+            case 'linear': {
+                const r = Math.round(lerp(16, 239, t));
+                const g = Math.round(lerp(185, 68, t));
+                const b = Math.round(lerp(129, 68, t));
+                return `rgb(${r}, ${g}, ${b})`;
+            }
+        }
 
-        return `rgb(${r}, ${g}, ${b})`;
     };
 
     const draw = () => {
@@ -108,31 +150,47 @@ const App = () => {
         // do until current year
         while (true) {
             const yearY = TOP_MARGIN + (year - 2009) * (monthHeight + YEAR_GAP_Y);
+            ctx.fillStyle = '#94a3b8';
             ctx.fillText(String(year), 10, yearY + monthHeight / 2);
             year++;
 
-            let month = 1;
-            while (month <= 12) {
-                const monthX = LEFT_MARGIN + (month - 1) * (monthWidth + MONTH_GAP_X);
-                const monthY = TOP_MARGIN + (year - 2009 - 1) * (monthHeight + YEAR_GAP_Y);
-                
-                const firstDay = new Date(year, month, 1);
-                const startingWeekday = firstDay.getDay();
-                const daysInMonth = new Date(year, month, 0).getDate();
+            let month = 0;
+            while (month < 12) {
 
-                // for (let day = 1; day <= daysInMonth; day++) {
-                //   const dateKey = formatDateKey(year, month - 1, day);
-                //   const dayData = days()[year]?.[month - 1]?.find(
-                //     (d) => {
-                //   }
+                drawMonth(ctx, year - 1, month,
+                    LEFT_MARGIN + month * (monthWidth + MONTH_GAP_X),
+                    yearY,
+                    myDays);
 
-                if (year > new Date().getFullYear()) break;
                 month++;
             }
             if (year > new Date().getFullYear()) break;
         }
 
         ctx.restore();
+    };
+
+    const drawMonth = (ctx, year, month, offsetX, offsetY, myDays) => {
+        const firstDay = new Date(year, month, 1);   // month is 0-based
+        const startingWeekday = (firstDay.getDay() + 6) % 7;  // Adjust to start week on Monday (Mon=0, Tue=1, ..., Sun=6)
+        const daysInMonth = new Date(year, month + 1, 0).getDate();  // number of days in the month
+
+        for (let day = 1; day <= daysInMonth; day++) {
+            const dateKey = formatDateKey(year, month, day);
+            const dayData = myDays[year]?.[month]?.find((d) => {
+                const date = new Date(d.date);
+                return date.getDate() === day;
+            });
+
+            const weekIndex = Math.floor((day - 1 + startingWeekday) / DAYS_IN_WEEK);
+            const weekdayIndex = (day - 1 + startingWeekday) % DAYS_IN_WEEK;
+
+            const x = offsetX + weekdayIndex * (DAY_SIZE + DAY_GAP);
+            const y = offsetY + weekIndex * (DAY_SIZE + DAY_GAP);
+
+            ctx.fillStyle = dayData ? getDayColor(dayData.num_transactions, myDays.minTransactions, myDays.maxTransactions, 'logN') : '#ebedf0';
+            ctx.fillRect(x, y, DAY_SIZE, DAY_SIZE);
+        }
     };
 
     const handleMouseUp = () => {
@@ -207,6 +265,19 @@ const App = () => {
                 };
             });
 
+            // calculate min, max, avg transactions
+            let totalTransactions = 0;
+            let minTransactions = Infinity;
+            let maxTransactions = -Infinity;
+            data.days.forEach((entry) => {
+                const tx = entry.num_transactions;
+                totalTransactions += tx;
+                if (tx < minTransactions) minTransactions = tx;
+                if (tx > maxTransactions) maxTransactions = tx;
+            });
+            const avgTransactions = totalTransactions / data.days.length;
+            console.log(`Transactions - Min: ${minTransactions}, Max: ${maxTransactions}, Avg: ${avgTransactions.toFixed(2)}`);
+
             // iteratr over data.days put them into nested structure by year and month
             const nestedDays = {};
             data.days.forEach((entry) => {
@@ -221,6 +292,9 @@ const App = () => {
                 nestedDays[year][month].push(entry);
             });
 
+            nestedDays.minTransactions = minTransactions;
+            nestedDays.maxTransactions = maxTransactions;
+            nestedDays.avgTransactions = avgTransactions;
             console.log('Nested days:', nestedDays);
             setDays(nestedDays);
             draw();
@@ -241,9 +315,9 @@ const App = () => {
             <p class="text-4xl text-green-700 text-center">Hello tailwind!</p>
             {isLoading() && <p class="text-gray-500">Loading days…</p>}
             {error() && <p class="text-red-500">{error()}</p>}
-        
+
             <canvas
-                width={800}
+                width={1000}
                 height={800}
                 class="border border-gray-300 shadow"
                 ref={(el) => (canvasRef = el)}
@@ -253,6 +327,9 @@ const App = () => {
                 onMouseUp={handleMouseUp}
                 onMouseLeave={handleMouseLeave}
             />
+            <pre class="text-xs text-left max-w-2xl overflow-x-auto bg-gray-100 p-2 rounded">
+                {JSON.stringify(days(), null, 2)}
+            </pre>
         </div>
     );
 };
