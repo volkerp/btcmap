@@ -6,6 +6,8 @@ const App = () => {
     const [days, setDays] = createSignal({});
     const [isLoading, setIsLoading] = createSignal(true);
     const [error, setError] = createSignal(null);
+    const [colorScale, setColorScale] = createSignal('linear');
+    const [valueType, setValueType] = createSignal('numTrans');
     let canvasRef;
     let ctx;
     let scale = 1;
@@ -31,14 +33,12 @@ const App = () => {
     ];
     const DAYS_IN_WEEK = 7;
     const MAX_WEEKS = 6;
-    const DAY_SIZE = 5;
+    const DAY_SIZE = 6;
     const DAY_GAP = 2;
-    const MONTH_GAP_X = 24;
-    const YEAR_GAP_Y = 40;
-    const LEFT_MARGIN = 90;
-    const TOP_MARGIN = 70;
-    const MIN_TRANSACTIONS = 1;
-    const MAX_TRANSACTIONS = 3000;
+    const MONTH_GAP_X = 20;
+    const YEAR_GAP_Y = 30;
+    const LEFT_MARGIN = 80;
+    const TOP_MARGIN = 50;
 
     const formatDateKey = (year, month, day) =>
         `${year}-${String(month + 1).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
@@ -88,16 +88,21 @@ const App = () => {
                 return `rgb(${r}, ${g}, ${b})`;
             }
             case 'log10': {
-                const logValue = lerpLog10(minValue, maxValue, t);
-                const logT = (Math.log10(logValue) - Math.log10(minValue)) / (Math.log10(maxValue) - Math.log10(minValue));
+                // Compute t in log10 space based on the value
+                const logMin = Math.log10(minValue);
+                const logMax = Math.log10(maxValue);
+                const logValue = Math.log10(clamped);
+                const logT = (logValue - logMin) / (logMax - logMin);
                 const r = Math.round(lerp(16, 239, logT));
                 const g = Math.round(lerp(185, 68, logT));
                 const b = Math.round(lerp(129, 68, logT));
                 return `rgb(${r}, ${g}, ${b})`;
             }
             case 'logN': {
-                const logValue = lerpLogN(minValue, maxValue, t, 10); // using base 10 for example
-                const logT = (Math.log10(logValue) - Math.log10(minValue)) / (Math.log10(maxValue) - Math.log10(minValue));
+                const logMin = Math.log(minValue);
+                const logMax = Math.log(maxValue);
+                const logValue = Math.log(clamped);
+                const logT = (logValue - logMin) / (logMax - logMin);
                 const r = Math.round(lerp(16, 239, logT));
                 const g = Math.round(lerp(185, 68, logT));
                 const b = Math.round(lerp(129, 68, logT));
@@ -143,7 +148,7 @@ const App = () => {
         ctx.font = `${12 / scale}px sans-serif`;
         MONTH_NAMES.forEach((name, monthIndex) => {
             const monthX = LEFT_MARGIN + monthIndex * (monthWidth + MONTH_GAP_X);
-            ctx.fillText(name, monthX, TOP_MARGIN - 10);
+            ctx.fillText(name, monthX, TOP_MARGIN - 14);
         });
 
         let year = 2009;
@@ -156,6 +161,15 @@ const App = () => {
 
             let month = 0;
             while (month < 12) {
+
+                if (scale > 2.0) {
+                    // draw label MM-YYYY
+                    ctx.fillStyle = '#94a3b8';
+                    ctx.font = `6px sans-serif`;    
+                    const label = `${String(month + 1).padStart(2, '0')}-${year - 1}`;
+                    const labelX = LEFT_MARGIN + month * (monthWidth + MONTH_GAP_X);
+                    ctx.fillText(label, labelX, yearY - 10);
+                }
 
                 drawMonth(ctx, year - 1, month,
                     LEFT_MARGIN + month * (monthWidth + MONTH_GAP_X),
@@ -176,11 +190,7 @@ const App = () => {
         const daysInMonth = new Date(year, month + 1, 0).getDate();  // number of days in the month
 
         for (let day = 1; day <= daysInMonth; day++) {
-            const dateKey = formatDateKey(year, month, day);
-            const dayData = myDays[year]?.[month]?.find((d) => {
-                const date = new Date(d.date);
-                return date.getDate() === day;
-            });
+            const dayData = myDays[year]?.[month]?.[day - 1];
 
             const weekIndex = Math.floor((day - 1 + startingWeekday) / DAYS_IN_WEEK);
             const weekdayIndex = (day - 1 + startingWeekday) % DAYS_IN_WEEK;
@@ -188,7 +198,19 @@ const App = () => {
             const x = offsetX + weekdayIndex * (DAY_SIZE + DAY_GAP);
             const y = offsetY + weekIndex * (DAY_SIZE + DAY_GAP);
 
-            ctx.fillStyle = dayData ? getDayColor(dayData.num_transactions, myDays.minTransactions, myDays.maxTransactions, 'logN') : '#ebedf0';
+            let color = '#ebedf0';
+            if (dayData) { 
+                switch (valueType()) {
+                    case 'BlockSize':
+                        color = getDayColor(dayData.size, myDays.minBlockSize, myDays.maxBlockSize, colorScale());
+                        break;
+                    case 'numTrans':
+                    default:
+                        color = getDayColor(dayData.num_transactions, myDays.minTransactions, myDays.maxTransactions, colorScale());
+                        break;
+                }
+            }
+            ctx.fillStyle = color;
             ctx.fillRect(x, y, DAY_SIZE, DAY_SIZE);
         }
     };
@@ -206,7 +228,7 @@ const App = () => {
         const delta = event.deltaY < 0 ? 1.1 : 0.9;
 
         scale *= delta;
-        scale = Math.max(0.2, Math.min(scale, 5));
+        scale = Math.max(1.0, Math.min(scale, 10));
 
         offsetX = worldX * scale - mouseX;
         offsetY = worldY * scale - mouseY;
@@ -265,20 +287,20 @@ const App = () => {
                 };
             });
 
-            // calculate min, max, avg transactions
-            let totalTransactions = 0;
-            let minTransactions = Infinity;
-            let maxTransactions = -Infinity;
+            let [minTransactions, minBlockSize] = [Infinity, Infinity];
+            let [maxTransactions, maxBlockSize] = [-Infinity, -Infinity];
             data.days.forEach((entry) => {
                 const tx = entry.num_transactions;
-                totalTransactions += tx;
                 if (tx < minTransactions) minTransactions = tx;
                 if (tx > maxTransactions) maxTransactions = tx;
+                if (entry.size < minBlockSize) minBlockSize = entry.size;
+                if (entry.size > maxBlockSize) maxBlockSize = entry.size;
             });
-            const avgTransactions = totalTransactions / data.days.length;
-            console.log(`Transactions - Min: ${minTransactions}, Max: ${maxTransactions}, Avg: ${avgTransactions.toFixed(2)}`);
 
-            // iteratr over data.days put them into nested structure by year and month
+            console.log(`Transactions - Min: ${minTransactions}, Max: ${maxTransactions}`);
+            console.log(`Block Size - Min: ${minBlockSize}, Max: ${maxBlockSize}`);
+
+            // iterate over data.days put them into nested structure by year and month
             const nestedDays = {};
             data.days.forEach((entry) => {
                 const year = entry.date.getFullYear();
@@ -292,9 +314,19 @@ const App = () => {
                 nestedDays[year][month].push(entry);
             });
 
+            // add null entries for missing days
+            nestedDays[2009][0].splice(0, 0, null); // add null for 2009-01-01
+            nestedDays[2009][0].splice(1, 0, null); // add null for 2009-01-02
+            nestedDays[2009][0].splice(3, 0, null); // add null for 2009-01-04
+            nestedDays[2009][0].splice(4, 0, null); // add null for 2009-01-05
+            nestedDays[2009][0].splice(5, 0, null); // add null for 2009-01-06
+            nestedDays[2009][0].splice(6, 0, null); // add null for 2009-01-07
+            nestedDays[2009][0].splice(7, 0, null); // add null for 2009-01-08
+
             nestedDays.minTransactions = minTransactions;
             nestedDays.maxTransactions = maxTransactions;
-            nestedDays.avgTransactions = avgTransactions;
+            nestedDays.minBlockSize = minBlockSize;
+            nestedDays.maxBlockSize = maxBlockSize;
             console.log('Nested days:', nestedDays);
             setDays(nestedDays);
             draw();
@@ -312,13 +344,51 @@ const App = () => {
 
     return (
         <div class="flex flex-col items-center justify-center min-h-screen gap-6">
-            <p class="text-4xl text-green-700 text-center">Hello tailwind!</p>
+            <div class="flex gap-4 items-center mb-4">
+                <span class="font-semibold text-gray-700">Value:</span>
+                {['numTrans', 'BlockSize'].map((type) => (
+                    <label class="inline-flex items-center cursor-pointer" key={type}>
+                        <input
+                            type="radio"
+                            name="valueType"
+                            value={type}
+                            class="form-radio text-blue-600"
+                            checked={type === valueType()}
+                            onChange={() => {
+                                setValueType(type);
+                                draw();
+                            }}
+                        />
+                        <span class="ml-2 capitalize">{type}</span>
+                    </label>
+                ))}
+            </div>
+            <div class="flex gap-4 items-center mb-4">
+                <span class="font-semibold text-gray-700">Color scale:</span>
+                {['linear', 'log2', 'log10', 'logN'].map((type) => (
+                    <label class="inline-flex items-center cursor-pointer" key={type}>
+                        <input
+                            type="radio"
+                            name="colorScale"
+                            value={type}
+                            class="form-radio text-blue-600"
+                            checked={type === colorScale()}
+                            onChange={() => {
+                                setColorScale(type);
+                                draw();
+                            }}
+                        />
+                        <span class="ml-2 capitalize">{type}</span>
+                    </label>
+                ))}
+            </div>
+        
             {isLoading() && <p class="text-gray-500">Loading days…</p>}
             {error() && <p class="text-red-500">{error()}</p>}
 
             <canvas
                 width={1000}
-                height={800}
+                height={1000}
                 class="border border-gray-300 shadow"
                 ref={(el) => (canvasRef = el)}
                 onWheel={handleWheel}
