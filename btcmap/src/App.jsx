@@ -4,41 +4,32 @@ const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || 'http://localhost:3001
 
 const App = () => {
     const [days, setDays] = createSignal({});
+    const [blocks, setBlocks] = createSignal({});
     const [isLoading, setIsLoading] = createSignal(true);
     const [error, setError] = createSignal(null);
     const [colorScale, setColorScale] = createSignal('linear');
     const [valueType, setValueType] = createSignal('numTrans');
     let canvasRef;
     let ctx;
-    let scale = 1;
+    const [scale, setScale] = createSignal(1.1);
     let offsetX = 0;
     let offsetY = 0;
     let isPanning = false;
     let lastClientX = 0;
     let lastClientY = 0;
+    let visible = { x: 0, y: 0, width: 0, height: 0 };
 
-    const MONTH_NAMES = [
-        'Jan',
-        'Feb',
-        'Mar',
-        'Apr',
-        'May',
-        'Jun',
-        'Jul',
-        'Aug',
-        'Sep',
-        'Oct',
-        'Nov',
-        'Dec'
-    ];
+    const MONTH_NAMES = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
     const DAYS_IN_WEEK = 7;
     const MAX_WEEKS = 6;
-    const DAY_SIZE = 6;
+    const DAY_WIDTH = 6;
+    const DAY_HEIGHT = 6;
     const DAY_GAP = 2;
     const MONTH_GAP_X = 20;
     const YEAR_GAP_Y = 30;
     const LEFT_MARGIN = 80;
     const TOP_MARGIN = 50;
+    const NV_COLOR = '#9b9da0';
 
     const formatDateKey = (year, month, day) =>
         `${year}-${String(month + 1).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
@@ -72,7 +63,7 @@ const App = () => {
 
     const getDayColor = (value, minValue, maxValue, type = 'linear') => {
         if (!Number.isFinite(value) || value <= 0) {
-            return '#000000';
+            return NV_COLOR;
         }
         const clamped = Math.min(Math.max(value, minValue), maxValue);
         const range = maxValue - minValue;
@@ -129,7 +120,13 @@ const App = () => {
         ctx.setTransform(1, 0, 0, 1, 0, 0);
         ctx.clearRect(0, 0, width, height);
         ctx.translate(-offsetX, -offsetY);
-        ctx.scale(scale, scale);
+        ctx.scale(scale(), scale());
+
+        // calculate visible area in world coordinates
+        visible.x = offsetX / scale();
+        visible.y = offsetY / scale();
+        visible.width = width / scale();
+        visible.height = height / scale();
 
         const myDays = days();
 
@@ -138,14 +135,13 @@ const App = () => {
             return;
         }
 
-
-        const monthWidth = DAYS_IN_WEEK * DAY_SIZE + (DAYS_IN_WEEK - 1) * DAY_GAP;
-        const monthHeight = MAX_WEEKS * DAY_SIZE + (MAX_WEEKS - 1) * DAY_GAP;
+        const monthWidth = DAYS_IN_WEEK * DAY_WIDTH + (DAYS_IN_WEEK - 1) * DAY_GAP;
+        const monthHeight = MAX_WEEKS * DAY_HEIGHT + (MAX_WEEKS - 1) * DAY_GAP;
 
         ctx.fillStyle = '#94a3b8';
         ctx.textBaseline = 'bottom';
         ctx.textAlign = 'left';
-        ctx.font = `${12 / scale}px sans-serif`;
+        ctx.font = `${12 / scale()}px sans-serif`;
         MONTH_NAMES.forEach((name, monthIndex) => {
             const monthX = LEFT_MARGIN + monthIndex * (monthWidth + MONTH_GAP_X);
             ctx.fillText(name, monthX, TOP_MARGIN - 14);
@@ -162,11 +158,11 @@ const App = () => {
             let month = 0;
             while (month < 12) {
 
-                if (scale > 2.0) {
-                    // draw label MM-YYYY
+                if (scale() > 3.0) {
+                    // draw label YYYY-MM
                     ctx.fillStyle = '#94a3b8';
-                    ctx.font = `6px sans-serif`;    
-                    const label = `${String(month + 1).padStart(2, '0')}-${year - 1}`;
+                    ctx.font = `6px sans-serif`;
+                    const label = `${year - 1}-${String(month + 1).padStart(2, '0')}`;
                     const labelX = LEFT_MARGIN + month * (monthWidth + MONTH_GAP_X);
                     ctx.fillText(label, labelX, yearY - 10);
                 }
@@ -195,10 +191,16 @@ const App = () => {
             const weekIndex = Math.floor((day - 1 + startingWeekday) / DAYS_IN_WEEK);
             const weekdayIndex = (day - 1 + startingWeekday) % DAYS_IN_WEEK;
 
-            const x = offsetX + weekdayIndex * (DAY_SIZE + DAY_GAP);
-            const y = offsetY + weekIndex * (DAY_SIZE + DAY_GAP);
+            const x = offsetX + weekdayIndex * (DAY_WIDTH + DAY_GAP);
+            const y = offsetY + weekIndex * (DAY_HEIGHT + DAY_GAP);
 
-            let color = '#ebedf0';
+            // only draw if in visible area
+            if (x + DAY_WIDTH < visible.x || x > visible.x + visible.width ||
+                y + DAY_HEIGHT < visible.y || y > visible.y + visible.height) {
+                continue;
+            }
+
+            let color = NV_COLOR;
             if (dayData) { 
                 switch (valueType()) {
                     case 'BlockSize':
@@ -210,10 +212,70 @@ const App = () => {
                         break;
                 }
             }
-            ctx.fillStyle = color;
-            ctx.fillRect(x, y, DAY_SIZE, DAY_SIZE);
+
+            if (scale() > 20.0) {
+                // draw label YYYY-MM-DD
+                ctx.fillStyle = '#94a3b8';
+                ctx.font = `0.5px sans-serif`;
+                const label = `${year - 1}-${String(month + 1).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
+                ctx.fillText(label, x, y - 0.2);
+            }
+
+            if (scale() < 4) {
+                ctx.fillStyle = color;
+                ctx.fillRect(x, y, DAY_WIDTH, DAY_HEIGHT);
+            } else {
+                drawDay(ctx, year, month, day, x, y, blocks());
+            }
         }
     };
+
+    const drawDay = (ctx, year, month, day, offsetX, offsetY, blocks) => {
+        const dayData = blocks[year]?.[month]?.[day];
+        if (!dayData) return;
+
+        const BLOCKS_PER_ROW = 13;
+        const BLOCK_SIZE = (scale() < 8.0) ? DAY_WIDTH / BLOCKS_PER_ROW : DAY_WIDTH / (BLOCKS_PER_ROW + 4);
+        let BLOCK_GAP = 0.0;
+        if (scale() < 8.0) {
+            BLOCK_GAP = 0.0;
+        } else if (scale() > 8.0 && scale() < 10.0) {
+            BLOCK_GAP = BLOCK_SIZE / 5.0;
+        } else {
+            BLOCK_GAP = BLOCK_SIZE / 3.5;
+        }
+
+        let blockIndex = 0;
+        for (let row = 0; row < BLOCKS_PER_ROW+10; row++) {
+            if (blockIndex >= dayData.length) break;
+            for (let col = 0; col < BLOCKS_PER_ROW; col++) {
+                const x = offsetX + col * (BLOCK_SIZE + BLOCK_GAP);
+                const y = offsetY + row * (BLOCK_SIZE + BLOCK_GAP);
+
+                let color = '#000000';
+                switch (valueType()) {
+                    case 'BlockSize':
+                        color = getDayColor(dayData[blockIndex]?.size,
+                            days().minBlockSize,
+                            days().maxBlockSize,
+                            colorScale());
+                        break;
+                    case 'numTrans':
+                    default:
+                        color = getDayColor(dayData[blockIndex]?.num_transactions,
+                            days().minTransactions,
+                            days().maxTransactions,
+                            colorScale());
+                        break;
+                }   
+
+                ctx.fillStyle = color;
+                ctx.fillRect(x, y, BLOCK_SIZE, BLOCK_SIZE);
+
+                if (++blockIndex >= dayData.length) break;
+            }
+        }
+    }
 
     const handleMouseUp = () => {
         isPanning = false;
@@ -223,15 +285,15 @@ const App = () => {
         event.preventDefault();
         const mouseX = event.offsetX;
         const mouseY = event.offsetY;
-        const worldX = (mouseX + offsetX) / scale;
-        const worldY = (mouseY + offsetY) / scale;
+        const worldX = (mouseX + offsetX) / scale();
+        const worldY = (mouseY + offsetY) / scale();
         const delta = event.deltaY < 0 ? 1.1 : 0.9;
 
-        scale *= delta;
-        scale = Math.max(1.0, Math.min(scale, 10));
+        const newScale = Math.max(1.0, Math.min(scale() * delta, 50));
+        setScale(newScale);
 
-        offsetX = worldX * scale - mouseX;
-        offsetY = worldY * scale - mouseY;
+        offsetX = worldX * newScale - mouseX;
+        offsetY = worldY * newScale - mouseY;
 
         draw();
     };
@@ -262,15 +324,35 @@ const App = () => {
         handleMouseUp();
     };
 
-    onMount(async () => {
-        window.addEventListener('mouseup', handleMouseUp);
-
-        if (canvasRef) {
-            ctx = canvasRef.getContext('2d');
-            draw();
+    const fetchBlocks = async () => {
+        const response = await fetch(`${API_BASE_URL}/api/blocks`);
+        if (!response.ok) {
+            throw new Error(`Request failed with status ${response.status}`);
         }
+        const data = await response.json();
 
-        try {
+        // maybe use web worker for this if data is large
+        const nestedBlocks = {};
+        data.blocks.forEach((block) => {
+            const date = new Date(block.timestamp * 1000);
+            const year = date.getFullYear();
+            const month = date.getMonth();
+            const day = date.getDate();
+            if (!nestedBlocks[year]) {
+                nestedBlocks[year] = {};
+            }
+            if (!nestedBlocks[year][month]) {
+                nestedBlocks[year][month] = {};
+            }
+            if (!nestedBlocks[year][month][day]) {
+                nestedBlocks[year][month][day] = [];
+            }
+            nestedBlocks[year][month][day].push(block);
+        });
+        setBlocks(nestedBlocks);
+    }
+
+    const fetchDays = async () => {
             const response = await fetch(`${API_BASE_URL}/api/days`);
             if (!response.ok) {
                 throw new Error(`Request failed with status ${response.status}`);
@@ -287,8 +369,9 @@ const App = () => {
                 };
             });
 
-            let [minTransactions, minBlockSize] = [Infinity, Infinity];
-            let [maxTransactions, maxBlockSize] = [-Infinity, -Infinity];
+            let [minBlockSize, maxBlockSize] = [Infinity, -Infinity];
+            let [minTransactions, maxTransactions] = [Infinity, -Infinity];
+            let [minMinted, maxMinted] = [Infinity, -Infinity];
             data.days.forEach((entry) => {
                 const tx = entry.num_transactions;
                 if (tx < minTransactions) minTransactions = tx;
@@ -329,12 +412,33 @@ const App = () => {
             nestedDays.maxBlockSize = maxBlockSize;
             console.log('Nested days:', nestedDays);
             setDays(nestedDays);
+    };
+
+    onMount(async () => {
+        window.addEventListener('mouseup', handleMouseUp);
+
+        if (canvasRef) {
+            ctx = canvasRef.getContext('2d');
             draw();
+        }
+
+        try {
+            await fetchDays();
         } catch (err) {
             console.error('Failed to fetch days', err);
             setError(err instanceof Error ? err.message : 'Failed to fetch days');
         } finally {
+            draw();
             setIsLoading(false);
+        }
+
+        try {
+            await fetchBlocks();
+        } catch (err) {
+            console.error('Failed to fetch blocks', err);
+        } finally {
+            console.log('Finished fetching blocks');
+            // draw();
         }
     });
 
@@ -381,15 +485,16 @@ const App = () => {
                         <span class="ml-2 capitalize">{type}</span>
                     </label>
                 ))}
+                <div>{scale().toFixed(2)}</div>
             </div>
         
             {isLoading() && <p class="text-gray-500">Loading days…</p>}
             {error() && <p class="text-red-500">{error()}</p>}
 
             <canvas
-                width={1000}
+                width={1200}
                 height={1000}
-                class="border border-gray-300 shadow"
+                class="border border-gray-300 shadow bg-zinc-900"
                 ref={(el) => (canvasRef = el)}
                 onWheel={handleWheel}
                 onMouseDown={handleMouseDown}
