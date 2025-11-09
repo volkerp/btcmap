@@ -62,7 +62,7 @@ if __name__ == "__main__":
     parser.add_argument("-c", help="Create DB", dest="createdb", action="store_true")
     parser.add_argument("-d", help="DB name", dest="dbname", default="bitcoin")
     parser.add_argument("-s", help="Start at Block Height", dest="minheight", type=int, default=0)
-    parser.add_argument("-e", help="Stop at Block Height", dest="maxheight", type=int, default=100)
+    parser.add_argument("-e", help="Stop at Block Height", dest="maxheight", type=int, default=2000000)
 
     args = parser.parse_args()
 

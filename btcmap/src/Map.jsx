@@ -107,7 +107,7 @@ const Map = (props) => {
         visible.y = offsetY / props.scale();
         visible.width = width / props.scale();
         visible.height = height / props.scale();
-        
+
         const myDays = props.days();
         if (Object.keys(myDays).length === 0) {
             ctx.restore();
@@ -282,18 +282,44 @@ const Map = (props) => {
         window.addEventListener('mouseup', handleMouseUp);
         if (canvasRef) {
             ctx = canvasRef.getContext('2d');
+            // Ensure canvas fills available space
+            const updateSize = () => {
+                const parent = canvasRef.parentElement;
+                if (!parent) return;
+                const w = parent.clientWidth;
+                const h = parent.clientHeight;
+                if (!w || !h) return;
+                let changed = false;
+                if (canvasRef.width !== w) { canvasRef.width = w; changed = true; }
+                if (canvasRef.height !== h) { canvasRef.height = h; changed = true; }
+                if (changed) draw();
+            };
+            updateSize();
+            let ro;
+            if ('ResizeObserver' in window) {
+                ro = new ResizeObserver(() => updateSize());
+                ro.observe(canvasRef.parentElement);
+            } else {
+                window.addEventListener('resize', updateSize);
+            }
+            // store cleanup
+            canvasRef._cleanupResize = () => {
+                if (ro) ro.disconnect();
+                else window.removeEventListener('resize', updateSize);
+            };
             draw();
         }
     });
     onCleanup(() => {
         window.removeEventListener('mouseup', handleMouseUp);
+        if (canvasRef && canvasRef._cleanupResize) {
+            canvasRef._cleanupResize();
+        }
     });
 
     return (
         <canvas
-            width={1200}
-            height={1000}
-            class="border border-gray-300 shadow bg-zinc-900"
+            class="w-full h-full border border-gray-300 shadow bg-zinc-900 block"
             ref={(el) => (canvasRef = el)}
             onWheel={handleWheel}
             onMouseDown={handleMouseDown}

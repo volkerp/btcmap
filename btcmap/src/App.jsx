@@ -135,54 +135,57 @@ const App = () => {
     // No cleanup needed now; Map manages its own listeners.
 
     return (
-        <div class="flex flex-col items-center justify-center min-h-screen gap-6">
-            <div class="flex gap-4 items-center mb-4">
-                <span class="font-semibold text-gray-700">Value:</span>
-                {['numTrans', 'BlockSize', 'minted','priceUSD'].map((type) => (
-                    <label class="inline-flex items-center cursor-pointer" key={type}>
-                        <input
-                            type="radio"
-                            name="valueType"
-                            value={type}
-                            class="form-radio text-blue-600"
-                            checked={type === valueType()}
-                            onChange={() => {
-                                setValueType(type);
-                                draw();
-                            }}
-                        />
-                        <span class="ml-2 capitalize">{type}</span>
-                    </label>
-                ))}
-            </div>
-            <div class="flex gap-4 items-center mb-4">
-                <span class="font-semibold text-gray-700">Color scale:</span>
-                {['linear', 'log2', 'log10', 'logN'].map((type) => (
-                    <label class="inline-flex items-center cursor-pointer" key={type}>
-                        <input
-                            type="radio"
-                            name="colorScale"
-                            value={type}
-                            class="form-radio text-blue-600"
-                            checked={type === colorScale()}
-                            onChange={() => {
-                                setColorScale(type);
-                                draw();
-                            }}
-                        />
-                        <span class="ml-2 capitalize">{type}</span>
-                    </label>
-                ))}
-                <div>{scale().toFixed(2)}</div>
-            </div>
-        
-            {isLoading() && <p class="text-gray-500">Loading days…</p>}
-            {error() && <p class="text-red-500">{error()}</p>}
+        <div class="flex min-h-screen">
+            {/* Sidebar */}
+            <aside class="w-72 shrink-0 border-r bg-white p-4 space-y-6">
+                <div class="space-y-2">
+                    <div class="text-xs font-semibold text-gray-500 uppercase tracking-wide">Value</div>
+                    <div class="grid grid-cols-1 gap-2">
+                        {['numTrans', 'BlockSize', 'minted', 'priceUSD'].map((type) => (
+                            <label class="flex items-center gap-2 rounded border p-2 hover:bg-gray-50 cursor-pointer" key={type}>
+                                <input
+                                    type="radio"
+                                    name="valueType"
+                                    value={type}
+                                    class="accent-blue-600"
+                                    checked={type === valueType()}
+                                    onChange={() => setValueType(type)}
+                                />
+                                <span class="capitalize text-sm text-gray-800">{type}</span>
+                            </label>
+                        ))}
+                    </div>
+                </div>
 
-            <Map days={days} blocks={blocks} valueType={valueType} colorScale={colorScale} scale={scale} setScale={setScale} />
-            <pre class="text-xs text-left max-w-2xl overflow-x-auto bg-gray-100 p-2 rounded">
-                {JSON.stringify(days(), null, 2)}
-            </pre>
+                <div class="space-y-2">
+                    <div class="text-xs font-semibold text-gray-500 uppercase tracking-wide">Color scale</div>
+                    <div class="grid grid-cols-1 gap-2">
+                        {['linear', 'log2', 'log10', 'logN'].map((type) => (
+                            <label class="flex items-center gap-2 rounded border p-2 hover:bg-gray-50 cursor-pointer" key={type}>
+                                <input
+                                    type="radio"
+                                    name="colorScale"
+                                    value={type}
+                                    class="accent-blue-600"
+                                    checked={type === colorScale()}
+                                    onChange={() => setColorScale(type)}
+                                />
+                                <span class="capitalize text-sm text-gray-800">{type}</span>
+                            </label>
+                        ))}
+                    </div>
+                </div>
+
+                <div class="text-xs text-gray-500">Scale: <span class="font-mono">{scale().toFixed(2)}</span></div>
+
+                {isLoading() && <p class="text-gray-500">Loading days…</p>}
+                {error() && <p class="text-red-500">{error()}</p>}
+            </aside>
+
+            {/* Main content */}
+            <main class="flex-1 overflow-hidden h-screen">
+                <Map days={days} blocks={blocks} valueType={valueType} colorScale={colorScale} scale={scale} setScale={setScale} />
+            </main>
         </div>
     );
 };
