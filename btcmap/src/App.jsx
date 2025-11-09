@@ -1,5 +1,8 @@
 import { createSignal, onMount } from 'solid-js';
 import Map from './Map.jsx';
+import chroma from 'chroma-js';
+import { drawLegend, colorScale, colorScale2, colorScale3, colorBreweryColors, colorScheme, setColorScheme,
+    colorSchemeName, setColorSchemeName } from './tools';
 
 const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || 'http://localhost:3001';
 
@@ -8,8 +11,9 @@ const App = () => {
     const [blocks, setBlocks] = createSignal({});
     const [isLoading, setIsLoading] = createSignal(true);
     const [error, setError] = createSignal(null);
-    const [colorScale, setColorScale] = createSignal('linear');
+    const [scaleType, setScaleType] = createSignal('linear');
     const [valueType, setValueType] = createSignal('numTrans');
+    const [colorScheme, setColorScheme] = createSignal('RdYlBu');
     const [scale, setScale] = createSignal(1.1);
 
     const fetchBlocks = async () => {
@@ -61,6 +65,7 @@ const App = () => {
             let [minTransactions, maxTransactions] = [Infinity, -Infinity];
             let [minMinted, maxMinted] = [Infinity, -Infinity];
             let [minPriceUSD, maxPriceUSD] = [Infinity, -Infinity];
+            let [minValue, maxValue] = [Infinity, -Infinity];
             data.days.forEach((entry) => {
                 if (entry.num_transactions < minTransactions) minTransactions = entry.num_transactions;
                 if (entry.num_transactions > maxTransactions) maxTransactions = entry.num_transactions;
@@ -70,6 +75,8 @@ const App = () => {
                 if (entry.minted_value > maxMinted) maxMinted = entry.minted_value;
                 if (entry.priceusd < minPriceUSD) minPriceUSD = entry.priceusd;
                 if (entry.priceusd > maxPriceUSD) maxPriceUSD = entry.priceusd;
+                if (entry.output_value < minValue) minValue = entry.output_value;
+                if (entry.output_value > maxValue) maxValue = entry.output_value;
             });
 
             console.log(`Transactions - Min: ${minTransactions}, Max: ${maxTransactions}`);
@@ -108,6 +115,8 @@ const App = () => {
             nestedDays.maxMinted = maxMinted;
             nestedDays.minPriceUSD = minPriceUSD;
             nestedDays.maxPriceUSD = maxPriceUSD;
+            nestedDays.minValue = minValue;
+            nestedDays.maxValue = maxValue;
             console.log('Nested days:', nestedDays);
             setDays(nestedDays);
     };
@@ -132,7 +141,6 @@ const App = () => {
         }
     });
 
-    // No cleanup needed now; Map manages its own listeners.
 
     return (
         <div class="flex min-h-screen">
@@ -141,7 +149,7 @@ const App = () => {
                 <div class="space-y-2">
                     <div class="text-xs font-semibold text-gray-500 uppercase tracking-wide">Value</div>
                     <div class="grid grid-cols-1 gap-2">
-                        {['numTrans', 'BlockSize', 'minted', 'priceUSD'].map((type) => (
+                        {['numTrans', 'BlockSize', 'minted', 'value'].map((type) => (
                             <label class="flex items-center gap-2 rounded border p-2 hover:bg-gray-50 cursor-pointer" key={type}>
                                 <input
                                     type="radio"
@@ -160,31 +168,62 @@ const App = () => {
                 <div class="space-y-2">
                     <div class="text-xs font-semibold text-gray-500 uppercase tracking-wide">Color scale</div>
                     <div class="grid grid-cols-1 gap-2">
-                        {['linear', 'log2', 'log10', 'logN'].map((type) => (
+                        {['linear', 'log10', 'logN'].map((type) => (
                             <label class="flex items-center gap-2 rounded border p-2 hover:bg-gray-50 cursor-pointer" key={type}>
                                 <input
                                     type="radio"
-                                    name="colorScale"
+                                    name="scaleType"
                                     value={type}
                                     class="accent-blue-600"
-                                    checked={type === colorScale()}
-                                    onChange={() => setColorScale(type)}
+                                    checked={type === scaleType()}
+                                    onChange={() => setScaleType(type)}
                                 />
                                 <span class="capitalize text-sm text-gray-800">{type}</span>
                             </label>
                         ))}
                     </div>
                 </div>
-
+                <div class="space-y-2">
+                    <div class="text-xs font-semibold text-gray-500 uppercase tracking-wide">Color scheme</div>
+                    <select
+                        class="w-full border rounded p-2 text-sm"
+                        value={colorSchemeName()}
+                        onChange={e => {
+                            setColorSchemeName(e.target.value);
+                            setColorScheme(chroma.scale(e.target.value));
+                        }}
+                    >
+                        {colorBreweryColors.map((scheme) => (
+                            <option value={scheme} key={scheme}>{scheme}</option>
+                        ))}
+                    </select>
+                </div>
+                <div class="space-y-2">
+                    <div class="text-xs font-semibold text-gray-500 uppercase tracking-wide">Legend</div>
+                    <div class="grid grid-cols-1 gap-2">
+                        <canvas
+                            class="w-full h-6 border border-gray-300"
+                            ref={(el) => drawLegend(el, colorScale, days)}
+                        ></canvas>
+                        <canvas
+                            class="w-full h-6 border border-gray-300"
+                            ref={(el) => drawLegend(el, colorScale2, days)}
+                        ></canvas>
+                        <canvas
+                            class="w-full h-6 border border-gray-300"
+                            ref={(el) => drawLegend(el, colorScale3, days)}
+                        ></canvas>
+                    </div>
+                </div>
                 <div class="text-xs text-gray-500">Scale: <span class="font-mono">{scale().toFixed(2)}</span></div>
-
+                <div class="text-xs text-gray-500">Scale: <span class="font-mono">{colorScheme()}</span></div>
                 {isLoading() && <p class="text-gray-500">Loading days…</p>}
                 {error() && <p class="text-red-500">{error()}</p>}
             </aside>
 
             {/* Main content */}
             <main class="flex-1 overflow-hidden h-screen">
-                <Map days={days} blocks={blocks} valueType={valueType} colorScale={colorScale} scale={scale} setScale={setScale} />
+                <Map days={days} blocks={blocks} valueType={valueType} scaleType={scaleType} scale={scale} setScale={setScale} colorScheme={colorScheme} />
             </main>
         </div>
     );

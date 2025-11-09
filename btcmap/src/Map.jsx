@@ -1,8 +1,11 @@
 import { onMount, onCleanup, createEffect } from 'solid-js';
 
+import { colorScale, colorScheme } from './tools';
+
+
 // Map / Canvas component extracted from App.jsx
 // Props expect Solid signals (accessor functions) for reactivity:
-// days, blocks, valueType, colorScale
+// days, blocks, valueType, scaleType
 const Map = (props) => {
     let canvasRef;
     let ctx;
@@ -27,12 +30,6 @@ const Map = (props) => {
     const NV_COLOR = '#9b9da0';
 
     const lerp = (start, end, amount) => start + (end - start) * amount;
-    const lerpLog2 = (start, end, amount) => {
-        const logStart = Math.log2(start);
-        const logEnd = Math.log2(end);
-        const logValue = lerp(logStart, logEnd, amount);
-        return Math.pow(2, logValue);
-    };
     const lerpLog10 = (start, end, amount) => {
         const logStart = Math.log10(start);
         const logEnd = Math.log10(end);
@@ -55,15 +52,8 @@ const Map = (props) => {
         const t = range === 0 ? 0 : (clamped - minValue) / range;
 
         switch (type) {
-            case 'log2': {
-                const logValue = lerpLog2(minValue, maxValue, t);
-                const logT = (Math.log2(logValue) - Math.log2(minValue)) / (Math.log2(maxValue) - Math.log2(minValue));
-                const r = Math.round(lerp(16, 239, logT));
-                const g = Math.round(lerp(185, 68, logT));
-                const b = Math.round(lerp(129, 68, logT));
-                return `rgb(${r}, ${g}, ${b})`;
-            }
             case 'log10': {
+                if (minValue <= 0 || maxValue <= 0) return NV_COLOR; // guard against invalid log domain
                 const logMin = Math.log10(minValue);
                 const logMax = Math.log10(maxValue);
                 const logValue = Math.log10(clamped);
@@ -74,6 +64,7 @@ const Map = (props) => {
                 return `rgb(${r}, ${g}, ${b})`;
             }
             case 'logN': {
+                if (minValue <= 0 || maxValue <= 0) return NV_COLOR;
                 const logMin = Math.log(minValue);
                 const logMax = Math.log(maxValue);
                 const logValue = Math.log(clamped);
@@ -88,6 +79,7 @@ const Map = (props) => {
                 const r = Math.round(lerp(16, 239, t));
                 const g = Math.round(lerp(185, 68, t));
                 const b = Math.round(lerp(129, 68, t));
+                return colorScheme()(t).css();
                 return `rgb(${r}, ${g}, ${b})`;
             }
         }
@@ -118,7 +110,7 @@ const Map = (props) => {
         ctx.fillStyle = '#94a3b8';
         ctx.textBaseline = 'bottom';
         ctx.textAlign = 'left';
-    ctx.font = `${12 / props.scale()}px sans-serif`;
+        ctx.font = `${12 / props.scale()}px sans-serif`;
         MONTH_NAMES.forEach((name, monthIndex) => {
             const monthX = LEFT_MARGIN + monthIndex * (monthWidth + MONTH_GAP_X);
             ctx.fillText(name, monthX, TOP_MARGIN - 14);
@@ -167,17 +159,20 @@ const Map = (props) => {
             if (dayData) {
                 switch (props.valueType()) {
                     case 'BlockSize':
-                        color = getDayColor(dayData.size, myDays.minBlockSize, myDays.maxBlockSize, props.colorScale());
+                        color = getDayColor(dayData.size, myDays.minBlockSize, myDays.maxBlockSize, props.scaleType());
                         break;
                     case 'priceUSD':
-                        color = getDayColor(dayData.priceusd, myDays.minPriceUSD, myDays.maxPriceUSD, props.colorScale());
+                        color = getDayColor(dayData.priceusd, myDays.minPriceUSD, myDays.maxPriceUSD, props.scaleType());
                         break;
                     case 'minted':
-                        color = getDayColor(dayData.minted_value, myDays.minMinted, myDays.maxMinted, props.colorScale());
+                        color = getDayColor(dayData.minted_value, myDays.minMinted, myDays.maxMinted, props.scaleType());
+                        break;
+                    case 'value':
+                        color = getDayColor(dayData.output_value, myDays.minValue, myDays.maxValue, props.scaleType());
                         break;
                     case 'numTrans':
                     default:
-                        color = getDayColor(dayData.num_transactions, myDays.minTransactions, myDays.maxTransactions, props.colorScale());
+                        color = getDayColor(dayData.num_transactions, myDays.minTransactions, myDays.maxTransactions, props.scaleType());
                         break;
                 }
             }
@@ -218,14 +213,17 @@ const Map = (props) => {
                 let color = '#000000';
                 switch (props.valueType()) {
                     case 'BlockSize':
-                        color = getDayColor(dayData[blockIndex]?.size, props.days().minBlockSize, props.days().maxBlockSize, props.colorScale());
+                        color = getDayColor(dayData[blockIndex]?.size, props.days().minBlockSize, props.days().maxBlockSize, props.scaleType());
                         break;
                     case 'minted':
-                        color = getDayColor(dayData[blockIndex]?.minted_value, props.days().minMinted, props.days().maxMinted, props.colorScale());
+                        color = getDayColor(dayData[blockIndex]?.minted_value, props.days().minMinted, props.days().maxMinted, props.scaleType());
+                        break;
+                    case 'value':
+                        color = getDayColor(dayData[blockIndex]?.output_value, props.days().minValue, props.days().maxValue, props.scaleType());
                         break;
                     case 'numTrans':
                     default:
-                        color = getDayColor(dayData[blockIndex]?.num_transactions, props.days().minTransactions, props.days().maxTransactions, props.colorScale());
+                        color = getDayColor(dayData[blockIndex]?.num_transactions, props.days().minTransactions, props.days().maxTransactions, props.scaleType());
                         break;
                 }
                 ctx.fillStyle = color;
@@ -273,8 +271,9 @@ const Map = (props) => {
         props.days();
         props.blocks();
         props.valueType();
-        props.colorScale();
+        props.scaleType();
         props.scale();
+        props.colorScheme();
         draw();
     });
 
